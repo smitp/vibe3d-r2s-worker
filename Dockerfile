@@ -77,11 +77,16 @@ RUN pip install --no-cache-dir \
 # 3. Build MSDeformAttn (deformable-DETR's C++/CUDA op). Required at
 #    inference time (no `if self.training` gate in deformable_transformer.py).
 #
-#    If this step fails, click "view full log" in the RunPod
-#    build UI to see the actual nvcc compile error.  BuildKit's
-#    log truncation hides it from the inline error message.
+#    Patch setup.py to drop the `torch.cuda.is_available()` guard.
+#    The build env has nvcc + CUDA_HOME but no GPU driver, so the
+#    guard returns False and the build aborts with
+#    `NotImplementedError: Cuda is not availabel`.  Building the
+#    .so without a GPU driver present is fine — we only need a
+#    GPU at *inference* time, not at *build* time.
 WORKDIR /opt/build/Raster2Seq/models/ops
-RUN sh make.sh
+RUN sed -i 's|if torch.cuda.is_available() and CUDA_HOME is not None:|if CUDA_HOME is not None:|' setup.py \
+    && grep -n "CUDA_HOME is not None" setup.py \
+    && sh make.sh
 
 # 4. Build the differentiable rasterizer (BoundaryFormer's C++/CUDA op).
 #    Used by the RoomFormer branch of the model.
