@@ -129,7 +129,12 @@ def main() -> int:
     aug = T.AugmentationList([ResizeAndPad((predict_flags["image_size"], predict_flags["image_size"]), pad_value=255)])
     aug_input = T.AugInput(arr)
     _ = aug(aug_input)
-    img_t = torch.as_tensor(aug_input.image.transpose((2, 0, 1)))[None] / 255.0  # (1, C, H, W)
+    # explicit dtype=float32 — torch.as_tensor on numpy 2.x with a
+    # uint8 array (and especially a uint8 scalar from detectron2's
+    # AugInput.image) hits `Could not infer dtype of numpy.uint8`.
+    # See https://github.com/pytorch/pytorch/issues/120616 and
+    # the numpy 2.0 NPY_NEP 50 changes that affect torch 2.1.
+    img_t = torch.as_tensor(aug_input.image.transpose((2, 0, 1)), dtype=torch.float32)[None] / 255.0  # (1, C, H, W)
     img_t = img_t.to(device)
 
     # ---- Build the model and load the checkpoint --------------------------
