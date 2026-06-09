@@ -67,10 +67,17 @@ RUN git clone --depth 1 https://github.com/Cornell-VAILab/Raster2Seq.git \
 #    version that breaks the MSDeformAttn C++ build on the same step.
 #    `--no-build-isolation` makes the build use the existing
 #    (base-image) torch instead of building a fresh one in a venv.
+#
+#    We also pin the detectron2 transitive deps explicitly: detectron2
+#    declares them in its setup.py but doesn't always install them
+#    (fvcore is a classic example — Detectron2's setup.py imports it
+#    but `pip install detectron2` doesn't always pull it in newer pip
+#    resolver versions).
 WORKDIR /opt/build/Raster2Seq
 RUN pip install --no-cache-dir \
         einops transformers huggingface_hub scipy shapely \
         opencv-python-headless pycocotools matplotlib timm \
+        fvcore omegaconf portalocker iopath pyyaml \
     && pip install --no-cache-dir --no-build-isolation \
         'git+https://github.com/facebookresearch/detectron2.git@v0.6'
 
@@ -90,8 +97,14 @@ RUN sed -i 's|if torch.cuda.is_available() and CUDA_HOME is not None:|if CUDA_HO
 
 # 4. Build the differentiable rasterizer (BoundaryFormer's C++/CUDA op).
 #    Used by the RoomFormer branch of the model.
+#
+#    Use `build install` (not `build develop`) so the compiled .so
+#    is copied into site-packages rather than left as a develop-mode
+#    egg-link that points back to the builder's /opt/build path.
+#    A develop install would break the runtime stage (different path)
+#    and surface as `ModuleNotFoundError: No module named 'polygon'`.
 WORKDIR /opt/build/Raster2Seq/diff_ras
-RUN python setup.py build develop
+RUN python setup.py build install
 
 # 5. Pre-download the cubicasa5k checkpoint so cold starts are fast.
 #    We use huggingface_hub with hf_token=hf_… if HF_TOKEN is set,
@@ -122,6 +135,25 @@ FROM base AS runtime
 COPY --from=builder /opt/build/Raster2Seq /opt/worker/vendor/Raster2Seq
 COPY --from=builder /opt/hf_cache /opt/hf_cache
 COPY --from=builder /opt/worker /opt/worker
+
+# Copy the Python site-packages the builder installed. This includes:
+#   * the pip-installed Raster2Seq deps (einops, transformers, fvcore,
+#     detectron2, runpod, …) — none of which the base image has by
+#     default
+#   * the compiled C++ ops:
+#       - MultiScaleDeformableAttention*.so  (built by `sh make.sh`
+#         → `python setup.py build install` in models/ops/)
+#       - polygon.cpython-310-x86_64-linux-gnu.so  (built by
+#         `python setup.py build install` in diff_ras/)
+#     Without these copies, the runtime stage's
+#     `import torch / import MultiScaleDeformableAttention /
+#      from diff_ras import SoftPolygon` all fail with
+#     ModuleNotFoundError, even though the build succeeded.
+#
+# The base image's site-packages is /usr/local/lib/python3.10/dist-packages,
+# and both stages share the same Python (3.10) and base image, so a
+# wholesale copy is the simplest and most reliable transfer.
+COPY --from=builder /usr/local/lib/python3.10/dist-packages/ /usr/local/lib/python3.10/dist-packages/
 
 # Make `vendor.Raster2Seq.*` importable from /opt/worker.
 ENV PYTHONPATH=/opt/worker:/opt/worker/vendor/Raster2Seq
