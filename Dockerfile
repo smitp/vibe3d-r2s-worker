@@ -77,14 +77,11 @@ RUN pip install --no-cache-dir \
 # 3. Build MSDeformAttn (deformable-DETR's C++/CUDA op). Required at
 #    inference time (no `if self.training` gate in deformable_transformer.py).
 #
-#    The `set -o pipefail` + `tail -200` combo captures the full
-#    compile error in the build log (default BuildKit tail is 200
-#    lines from the bottom, and pipefail preserves the upstream
-#    exit code so the build fails fast on real errors).
+#    If this step fails, click "view full log" in the RunPod
+#    build UI to see the actual nvcc compile error.  BuildKit's
+#    log truncation hides it from the inline error message.
 WORKDIR /opt/build/Raster2Seq/models/ops
-RUN rm -rf build/ *.egg-info src/*.o \
-    && set -o pipefail \
-    && sh make.sh 2>&1 | tail -200
+RUN sh make.sh
 
 # 4. Build the differentiable rasterizer (BoundaryFormer's C++/CUDA op).
 #    Used by the RoomFormer branch of the model.
