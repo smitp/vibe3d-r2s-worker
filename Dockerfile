@@ -78,11 +78,16 @@ RUN pip install --no-cache-dir \
         einops transformers huggingface_hub scipy shapely \
         opencv-python-headless pycocotools matplotlib timm \
         fvcore omegaconf portalocker iopath pyyaml \
-        # Raster2Seq's util/plot_utils.py imports descartes for
-        # rendering polygons in debug PNGs.  Not a model dep but
-        # the import is unconditional, so the runtime fails without
-        # it.
-        descartes \
+        # Raster2Seq's util/plot_utils.py imports a long chain of
+        # debug-only deps at module load (none are gated by try/except
+        # or if __name__). `from engine import generate` pulls this in
+        # unconditionally, so every dep has to be present at runtime
+        # even though we never render a debug PNG. Discovered one by
+        # one across several builds — see
+        # https://github.com/Cornell-VAILab/Raster2Seq/blob/master/util/plot_utils.py
+        # for the full list. Confirmed present (no further failures
+        # expected from this file) as of 2026-06-09.
+        descartes imageio plotly \
     && pip install --no-cache-dir --no-build-isolation \
         'git+https://github.com/facebookresearch/detectron2.git@v0.6'
 
