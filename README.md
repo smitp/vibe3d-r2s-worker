@@ -14,14 +14,18 @@ into a `FloorPlan`.
   ops (`models/ops` and `diff_ras`), and pre-downloads the
   `cubicasa5k` checkpoint from Hugging Face. Stage 3 strips the
   C++/CUDA toolchain and ships a minimal runtime image.
-- `handler.py` — RunPod handler entrypoint. Decodes the base64 image,
-  shells out to `predict_one.py`, returns the result dict.
+- `handler.py` — RunPod Serverless handler entrypoint. Decodes the
+  base64 image, shells out to `predict_one.py`, returns the result
+  dict. Used for serverless endpoints.
+- `serve.py` — plain HTTP server (stdlib `http.server`) for RunPod
+  Pods. Exposes port 8000; accepts the same `POST /runsync` JSON
+  contract as the serverless handler. **Use this for Pods.**
 - `predict_one.py` — single-image Raster2Seq inference script. Uses
   the same flags as `tools/predict_cc5k.sh` but takes one image at a
   time. Writes a `pred.json` with the polygon-sequence schema.
 - `requirements.txt` — handler-only deps (just `runpod`).
 
-## Deploy to RunPod (GitHub integration)
+## Deploy to RunPod Serverless (GitHub integration)
 
 1. **Connect GitHub**: in the RunPod console, go to **Settings →
    Connections → GitHub → Connect**. Authorize the OAuth. (Required
@@ -39,6 +43,44 @@ into a `FloorPlan`.
      cache in parallel)
 4. **Deploy Endpoint**. The first build takes 5–15 min. Subsequent
    updates push via GitHub releases.
+
+## Deploy to a RunPod Pod (recommended for debugging)
+
+If the serverless endpoint is unhealthy or stuck, a Pod gives you a
+real Linux box with GPU and direct terminal access — no gateway
+mystery.  Use `serve.py` instead of `handler.py`.
+
+1. **Push a tagged image to Docker Hub** (or any registry RunPod can
+   pull from):
+   ```bash
+   docker build -t yourdockerhub/vibe3d-r2s-worker:latest .
+   docker push yourdockerhub/vibe3d-r2s-worker:latest
+   ```
+2. **Create the Pod** in the RunPod console: **Pods → New Pod →
+   Custom Image → `yourdockerhub/vibe3d-r2s-worker:latest`**.
+3. **Configure**:
+   - GPU: any of the enabled types (RTX A4000 / A4500 / 4000 Ada /
+     2000 Ada — all work)
+   - Container Disk: 20 GB (image is ~5 GB after pull + 4 GB checkpoint)
+   - **Expose HTTP Port: 8000** (RunPod Pods auto-port-forward 8000-9000)
+4. **Override the entrypoint** in the Pod's "Advanced" / "Docker
+   Command" field:
+   ```
+   python -u serve.py
+   ```
+   (This replaces the default `python -u handler.py`.)
+5. **Click Deploy**. After ~2-3 min (image pull) + ~30-60s (cold
+   start, which compiles nothing on Pods), the Pod is running.
+6. **Find the public URL** in the Pod's "Connect" panel — it'll be
+   `https://<pod-id>-8000.proxy.runpod.net`.  Set
+   `R2S_CLOUD_ENDPOINT` to that URL (no `/v2/<id>` suffix) and the
+   client-side `cloud.py` will auto-detect the Pod path and use the
+   right JSON contract.
+
+7. **Tail logs** with the Pod's "Logs" tab to see the `[startup]`
+   self-test output and any `[http]` request lines.
+
+**Cost**: ~$0.40/hr for an A4000.  Stop the Pod when not in use.
 
 ## Cold-start latency
 

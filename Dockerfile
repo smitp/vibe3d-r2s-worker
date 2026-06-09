@@ -112,6 +112,7 @@ COPY requirements.txt /opt/worker/requirements.txt
 RUN pip install --no-cache-dir -r /opt/worker/requirements.txt
 COPY handler.py /opt/worker/handler.py
 COPY predict_one.py /opt/worker/predict_one.py
+COPY serve.py /opt/worker/serve.py
 
 # ─── Stage 3: runtime ─────────────────────────────────────────────────────
 FROM base AS runtime
@@ -127,7 +128,15 @@ ENV PYTHONPATH=/opt/worker:/opt/worker/vendor/Raster2Seq
 
 WORKDIR /opt/worker
 
+# 8000 is the port serve.py listens on.  RunPod Pods auto-port-forward
+# ports in the 8000-9000 range when the container exposes them.
+EXPOSE 8000
+
 # RunPod's container-runtime contract: ENTRYPOINT calls the handler.
 # The `runpod` Python SDK sets up the serverless loop; our handler.py
 # starts the loop when invoked without RUNPOD_LOCAL=1.
+#
+# To run as a Pod instead of a serverless endpoint, override the
+# entrypoint at Pod-deploy time:
+#   docker run <image> python -u serve.py
 ENTRYPOINT ["python", "-u", "handler.py"]
