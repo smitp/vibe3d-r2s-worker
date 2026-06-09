@@ -100,10 +100,49 @@ def handler(job: dict) -> dict:
     except subprocess.TimeoutExpired:
         return {"error": "inference timed out (>180s)"}
     except Exception as exc:  # noqa: BLE001 — RunPod wants any failure surfaced
+        # Also print the traceback to stderr (which RunPod captures in
+        # the worker log) so we can see it in the dashboard.
+        tb = traceback.format_exc()
+        print(f"[handler] job failed: {type(exc).__name__}: {exc}\n{tb}", file=sys.stderr, flush=True)
         return {
             "error": f"{type(exc).__name__}: {exc}",
-            "traceback": traceback.format_exc()[-2000:],
+            "traceback": tb[-2000:],
         }
+
+
+def _startup_self_test() -> None:
+    """Sanity-check the runtime at container boot.
+
+    The worker process gets killed with "exit code 1" if the
+    vendored Raster2Seq imports fail.  Catching the error here
+    and printing a clear message to stderr (which RunPod captures)
+    means the next deploy's worker log will tell us exactly what's
+    wrong, instead of just "exit 1".
+    """
+    print("[startup] python:", sys.version.split()[0], flush=True)
+    print(f"[startup] predict script: {PREDICT_SCRIPT}", flush=True)
+    print(f"[startup] PYTHONPATH: {os.environ.get('PYTHONPATH', '<unset>')}", flush=True)
+    print(f"[startup] CUDA_HOME: {os.environ.get('CUDA_HOME', '<unset>')}", flush=True)
+    try:
+        import torch  # noqa: F401
+        print(f"[startup] torch: {torch.__version__}, cuda available: {torch.cuda.is_available()}", flush=True)
+    except Exception as exc:
+        print(f"[startup] torch import FAILED: {exc}", file=sys.stderr, flush=True)
+    try:
+        from detectron2.data import transforms  # noqa: F401
+        print("[startup] detectron2 imports OK", flush=True)
+    except Exception as exc:
+        print(f"[startup] detectron2 import FAILED: {exc}", file=sys.stderr, flush=True)
+    try:
+        import MultiScaleDeformableAttention  # noqa: F401
+        print("[startup] MSDeformAttn import OK", flush=True)
+    except Exception as exc:
+        print(f"[startup] MSDeformAttn import FAILED: {type(exc).__name__}: {exc}", file=sys.stderr, flush=True)
+    try:
+        from diff_ras import SoftPolygon  # noqa: F401
+        print("[startup] diff_ras import OK", flush=True)
+    except Exception as exc:
+        print(f"[startup] diff_ras import FAILED: {type(exc).__name__}: {exc}", file=sys.stderr, flush=True)
 
 
 def _local_smoke_test() -> None:
@@ -119,6 +158,7 @@ def _local_smoke_test() -> None:
 
 
 if __name__ == "__main__":
+    _startup_self_test()
     if runpod is not None and os.environ.get("RUNPOD_LOCAL") != "1":
         runpod.serverless.start({"handler": handler})
     else:
