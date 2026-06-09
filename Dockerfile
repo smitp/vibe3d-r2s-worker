@@ -60,18 +60,15 @@ RUN python setup.py build develop
 # 5. Pre-download the cubicasa5k checkpoint so cold starts are fast.
 #    We use huggingface_hub with hf_token=hf_… if HF_TOKEN is set,
 #    otherwise anonymous (the cc5k weights are public).
-RUN python -c "
-import os
-from huggingface_hub import hf_hub_download
-token = os.environ.get('HF_TOKEN')
-ckpt = hf_hub_download(
-    repo_id='haopt/Raster2Seq',
-    filename='cubicasa5k.pth',
-    cache_dir='/opt/hf_cache',
-    token=token,
-)
-print('downloaded to', ckpt)
-" || echo "WARN: cubicasa5k pre-download failed; will retry at runtime"
+#
+#    Why a separate file and not `RUN python -c "..."`?  BuildKit
+#    (RunPod's builder) mis-tokenizes the inner `"..."` when the
+#    script spans many lines, surfacing as `unknown instruction:
+#    import` on the first non-Python line.  A separate file sidesteps
+#    that and keeps the Dockerfile readable.
+COPY download_checkpoint.py /opt/build/download_checkpoint.py
+RUN python /opt/build/download_checkpoint.py \
+        || echo "WARN: cubicasa5k pre-download failed; will retry at runtime"
 
 # 6. Install our handler's small dep set on top.
 WORKDIR /opt/worker
