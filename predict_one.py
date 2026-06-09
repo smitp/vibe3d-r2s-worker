@@ -66,7 +66,14 @@ CHECKPOINT_TO_DATASET = {
     "s3d-density":     {"dataset": "stru3d",   "semantic_classes": 19, "door_window_index": [16, 17], "label_map": S3D_LABEL},
 }
 
-# Mirrors tools/predict_cc5k.sh.
+# Mirrors tools/predict_cc5k.sh + the upstream predict.py argparser defaults.
+# The upstream script gets these for free because it goes through
+# `parser.set_defaults(...)` and `parser.parse_args()`. Our predict_one.py
+# builds the Namespace directly from this dict, so we have to enumerate
+# every default the upstream argparser would have provided. The
+# `position_embedding` key was the first one to surface as a runtime
+# AttributeError; the others (`query_pos_type`, `position_embedding_scale`)
+# were added preemptively to avoid a second round-trip.
 CC5K_PREDICT_FLAGS = dict(
     image_size=256,
     input_channels=3,
@@ -90,6 +97,11 @@ CC5K_PREDICT_FLAGS = dict(
     dec_n_points=4,
     enc_n_points=4,
     add_cls_token=True,
+    # Upstream predict.py argparser defaults — keep in sync.
+    position_embedding="sine",
+    position_embedding_scale=2 * np.pi,
+    query_pos_type="sine",
+    dropout=0.1,
 )
 
 IMAGE_SCALE = 2  # matches predict_cc5k.sh — output is 512x512
