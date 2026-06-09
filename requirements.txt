@@ -1,0 +1,4 @@
+# Serverless-handler deps. The bulk of the ML deps (torch, detectron2,
+# transformers, opencv) are already in the runpod/pytorch base image, so
+# this list is intentionally small.
+runpod>=1.6
