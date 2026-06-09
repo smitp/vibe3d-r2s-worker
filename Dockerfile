@@ -78,6 +78,11 @@ RUN pip install --no-cache-dir \
         einops transformers huggingface_hub scipy shapely \
         opencv-python-headless pycocotools matplotlib timm \
         fvcore omegaconf portalocker iopath pyyaml \
+        # Raster2Seq's util/plot_utils.py imports descartes for
+        # rendering polygons in debug PNGs.  Not a model dep but
+        # the import is unconditional, so the runtime fails without
+        # it.
+        descartes \
     && pip install --no-cache-dir --no-build-isolation \
         'git+https://github.com/facebookresearch/detectron2.git@v0.6'
 
