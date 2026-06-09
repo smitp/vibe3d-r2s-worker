@@ -22,11 +22,25 @@ ENV DEBIAN_FRONTEND=noninteractive \
     HF_HOME=/opt/hf_cache
 
 # OpenCV (required by Raster2Seq's plot_utils) needs libgl.
-# Detectron2 (a transitive dep) needs ninja and cython.
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    libgl1 libglib2.0-0 \
-    ninja-build cython \
-    && rm -rf /var/lib/apt/lists/*
+# Detectron2 (a transitive dep) needs ninja and a Cython compiler.
+#
+# Notes on the package list:
+#   * `cython3` is the Ubuntu 22.04 name for the Cython compiler
+#     (in older releases it was `cython`, but that was retired in
+#     jammy — installing it returns E: Package 'cython' has no
+#     installation candidate, which surfaces as apt exit 100).
+#   * The retry loop is for transient mirror/network failures
+#     unrelated to the package list.
+RUN for i in 1 2 3; do \
+        apt-get -o Acquire::http::No-Cache=True update \
+        && apt-get install -y --no-install-recommends \
+                libgl1 libglib2.0-0 \
+                ninja-build cython3 \
+        && rm -rf /var/lib/apt/lists/* \
+        && break; \
+        echo "apt-get failed (attempt $i), retrying in 5s..."; \
+        sleep 5; \
+    done
 
 # ─── Stage 2: builder ─────────────────────────────────────────────────────
 FROM base AS builder
