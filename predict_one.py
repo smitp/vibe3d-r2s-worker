@@ -136,7 +136,14 @@ CC5K_PREDICT_FLAGS = dict(
     dec_n_points=4,
     enc_n_points=4,
     query_pos_type="sine",
-    with_poly_refine=True,
+    # with_poly_refine=False to match the upstream predict_cc5k.sh
+    # invocation — the script passes --disable_poly_refine, which flips
+    # the argparse default of True to False. The cc5k checkpoint was
+    # trained without iterative polygon refinement, so its state_dict
+    # lacks the per-layer clones (with_poly_refine=True would create
+    # `_get_clones`-style duplicate class_embed/coords_embed heads and
+    # the checkpoint's `class_embed.X` keys would not line up).
+    with_poly_refine=False,
     masked_attn=False,
     # NOTE: `semantic_classes`, `dataset`, `dataset_name`, and
     # `label_map` are NOT set here — they come from
