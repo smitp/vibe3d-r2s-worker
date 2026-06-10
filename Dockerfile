@@ -91,6 +91,23 @@ RUN pip install --no-cache-dir \
     && pip install --no-cache-dir --no-build-isolation \
         'git+https://github.com/facebookresearch/detectron2.git@v0.6'
 
+# 2b. Patch the upstream code for numpy 2.x / torch 2.1 compat.  We have
+#     hit two related failures at model construction:
+#
+#     1. `deformable_transformer_v2.py:124`:
+#          self.pos_embed.data.copy_(torch.from_numpy(pos_embed).float().unsqueeze(0))
+#        raises `TypeError: expected np.ndarray (got numpy.ndarray)` on
+#        numpy 2.x because the sincos output isn't a buffer-protocol
+#        array in a layout `torch.from_numpy` accepts.  Wrap with
+#        `np.ascontiguousarray()` to force a C-contiguous copy.
+#
+#     Both lines are guaranteed to exist in master as of 2026-06-09 —
+#     anchor sed on the full statement, not the variable, so the sed
+#     never silently no-ops.
+WORKDIR /opt/build/Raster2Seq
+RUN sed -i 's|torch.from_numpy(pos_embed)|np.ascontiguousarray(torch.from_numpy(pos_embed))|' models/deformable_transformer_v2.py \
+    && grep -n "ascontiguousarray" models/deformable_transformer_v2.py
+
 # 3. Build MSDeformAttn (deformable-DETR's C++/CUDA op). Required at
 #    inference time (no `if self.training` gate in deformable_transformer.py).
 #
