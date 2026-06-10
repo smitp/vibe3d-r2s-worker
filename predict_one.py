@@ -68,40 +68,91 @@ CHECKPOINT_TO_DATASET = {
 
 # Mirrors tools/predict_cc5k.sh + the upstream predict.py argparser defaults.
 # The upstream script gets these for free because it goes through
-# `parser.set_defaults(...)` and `parser.parse_args()`. Our predict_one.py
-# builds the Namespace directly from this dict, so we have to enumerate
-# every default the upstream argparser would have provided. The
-# `position_embedding` key was the first one to surface as a runtime
-# AttributeError; the others (`query_pos_type`, `position_embedding_scale`)
-# were added preemptively to avoid a second round-trip.
+# `parser.parse_args()`. Our predict_one.py builds the Namespace directly
+# from this dict, so we have to enumerate every default the upstream
+# argparser would have provided.
+#
+# History of attributes that surfaced as AttributeError on `Namespace`:
+#   - `position_embedding`    (commit 5bf5ec4 — position_encoding.py:101)
+#   - `lr_backbone`           (post-5bf5ec4 build — backbone.py:128)
+# Rather than wait for each next one, this is the full set of upstream
+# defaults copied verbatim. Boolean `store_true` flags are stored as
+# `False` here (their default before --flag is passed). Values that
+# tools/predict_cc5k.sh explicitly sets override these defaults and
+# are still correct (poly2seq=True, dec_attn_concat_src=True, etc.).
 CC5K_PREDICT_FLAGS = dict(
-    image_size=256,
+    # top-level
+    batch_size=10,
+    debug=False,
     input_channels=3,
+    image_norm=False,
+    eval_every_epoch=20,
+    ckpt_every_epoch=20,
+    label_smoothing=0.0,
+    ignore_index=-1,
+    image_size=256,
+    ema4eval=True,
+    measure_time=False,
+    disable_sampling_cache=False,
+    use_anchor=True,
+    drop_wd=False,
+    plot_text=False,
+    image_scale=2,
+    one_color=False,
+    crop_white_space=False,
+    # refinement
+    refinement=False,
+    refinement_threshold=0.5,
+    # raster2seq
+    poly2seq=True,
     seq_len=512,
     num_bins=32,
-    poly2seq=True,
+    pre_decoder_pos_embed=False,
+    learnable_dec_pe=False,
+    dec_qkv_proj=False,
     dec_attn_concat_src=True,
     per_token_sem_loss=True,
-    use_anchor=True,
-    ema4eval=True,
-    disable_poly_refine=True,
+    add_cls_token=True,
+    # backbone
     backbone="resnet50",
+    lr_backbone=0,
+    dilation=False,
+    position_embedding="sine",
+    position_embedding_scale=2 * np.pi,
     num_feature_levels=4,
+    # Transformer
     enc_layers=6,
     dec_layers=6,
     dim_feedforward=1024,
     hidden_dim=256,
+    dropout=0.1,
     nheads=8,
     num_queries=800,
     num_polys=20,
     dec_n_points=4,
     enc_n_points=4,
-    add_cls_token=True,
-    # Upstream predict.py argparser defaults — keep in sync.
-    position_embedding="sine",
-    position_embedding_scale=2 * np.pi,
     query_pos_type="sine",
-    dropout=0.1,
+    with_poly_refine=True,
+    masked_attn=False,
+    semantic_classes=12,  # overridden by cfg["semantic_classes"] for cubicasa5k
+    disable_poly_refine=True,
+    # aux
+    aux_loss=True,  # `no_aux_loss` is the store_true that flips it
+    # dataset parameters
+    dataset_name="cubicasa",  # overridden by cfg["dataset"] for cubicasa5k
+    dataset_root="",
+    eval_set="test",
+    # misc
+    device="cuda",
+    num_workers=2,
+    seed=42,
+    checkpoint="",
+    output_dir="",
+    # visualization
+    plot_pred=True,
+    plot_density=True,
+    plot_gt=False,
+    save_pred=False,
 )
 
 IMAGE_SCALE = 2  # matches predict_cc5k.sh — output is 512x512
