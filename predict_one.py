@@ -256,12 +256,21 @@ def main() -> int:
     pred_rooms = outputs["room"]   # list[list[polygon]], one per image
     pred_labels = outputs["labels"]  # list[list[int]] or None
 
-    img_h_px, img_w_px = pil.size[1], pil.size[0]  # (W, H) → use H, W for y/x
-    # The model emits polygons in [0, 1] normalized coords (the image_scale
-    # is only used for visualization, not for the polygon coords themselves).
+    # The model emits polygons as integer (x, y) pixel coordinates on the
+    # *resized* input grid (see `engine._process_predictions`:
+    # `corners = np.array(poly) * (image_size - 1)`). Our predict path
+    # resizes the image to `predict_flags["image_size"]` (256 for cc5k)
+    # via `ResizeAndPad`, so the polygon coords live in 0..255 space.
+    #
+    # The cache schema for the r2s pipeline is normalized [0, 1] (matches
+    # `Wall._coord_in_unit_square` and the v3 cv_parser contract), so we
+    # divide by `image_size - 1` rather than `image_size` to land the
+    # max pixel value (255) at exactly 1.0.
+    #
     # NOTE: when the upstream `predict.py` uses --crop_white_space, the
     # polygons are cropped too. We don't crop in the single-image path
     # because the user controls what they upload.
+    model_grid = float(predict_flags["image_size"] - 1)
 
     for room_polys, room_labels in zip(pred_rooms, pred_labels):
         if room_labels is None:
@@ -269,8 +278,9 @@ def main() -> int:
         for poly, cls_idx in zip(room_polys, room_labels):
             if poly is None or len(poly) < 3:
                 continue
-            # `poly` is a (N, 2) array of (x, y) normalized coords.
-            verts = [[float(x), float(y)] for x, y in poly]
+            # `poly` is a (N, 2) array of (x, y) integer pixel coords on
+            # the resized grid. Normalize to [0, 1] for the cache schema.
+            verts = [[float(x) / model_grid, float(y) / model_grid] for x, y in poly]
             # Map class index → semantic label. CC5K_LABEL is a dict.
             label = cfg["label_map"].get(int(cls_idx), "room") if cfg["label_map"] else "room"
             polygons_out.append({"label": str(label), "vertices": verts})
