@@ -134,7 +134,12 @@ CC5K_PREDICT_FLAGS = dict(
     query_pos_type="sine",
     with_poly_refine=True,
     masked_attn=False,
-    semantic_classes=12,  # overridden by cfg["semantic_classes"] for cubicasa5k
+    # NOTE: `semantic_classes`, `dataset`, `dataset_name`, and
+    # `label_map` are NOT set here — they come from
+    # CHECKPOINT_TO_DATASET[args.checkpoint] and get splatted into
+    # the Namespace at line ~210 alongside the predict_flags dict.
+    # If we set them here, the splat raises
+    # `TypeError: got multiple values for keyword argument`.
     disable_poly_refine=True,
     # aux
     aux_loss=True,  # `no_aux_loss` is the store_true that flips it
