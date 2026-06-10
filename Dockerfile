@@ -59,8 +59,10 @@ RUN git clone --depth 1 https://github.com/Cornell-VAILab/Raster2Seq.git \
         /opt/build/Raster2Seq
 
 # 2. Install Raster2Seq's Python deps. The repo's requirements.txt is
-#    pinned to torch 2.3.1 + cuda 11.8; we override the torch install
-#    because the base image already has the right CUDA / torch pair.
+#    pinned to torch 2.3.1 + cuda 11.8 + numpy 1.26.4 — we keep the
+#    base image's torch (2.1.0) and the base image's CUDA (11.8), but
+#    install numpy==1.26.4 explicitly below to match the upstream
+#    test matrix. See the NumPy pin comment for the full rationale.
 #
 #    detectron2 is pinned to a specific commit (v0.6) because the
 #    master branch tracks the latest torch, which can pull a torch
@@ -73,6 +75,18 @@ RUN git clone --depth 1 https://github.com/Cornell-VAILab/Raster2Seq.git \
 #    (fvcore is a classic example — Detectron2's setup.py imports it
 #    but `pip install detectron2` doesn't always pull it in newer pip
 #    resolver versions).
+#
+#    **NumPy is pinned to 1.26.4** to match the upstream-tested
+#    version (see Raster2Seq/requirements.txt). The base image
+#    ships whatever NumPy its torch wheel was built against, which
+#    on cuda 11.8 + torch 2.1 is NumPy 2.x. NumPy 2.x changes the
+#    buffer protocol semantics, and `torch.from_numpy()` rejects
+#    `float64` arrays returned by `get_1d_sincos_pos_embed_from_grid`
+#    with `TypeError: expected np.ndarray (got numpy.ndarray)`.
+#    Pinning to 1.26.4 (the upstream-tested version) is the
+#    supported way to fix this — see
+#    https://github.com/Cornell-VAILab/Raster2Seq/blob/master/requirements.txt
+#    `numpy==1.26.4`.
 WORKDIR /opt/build/Raster2Seq
 RUN pip install --no-cache-dir \
         einops transformers huggingface_hub scipy shapely \
@@ -88,32 +102,10 @@ RUN pip install --no-cache-dir \
         # for the full list. Confirmed present (no further failures
         # expected from this file) as of 2026-06-09.
         descartes imageio plotly \
+        # Pin NumPy to the upstream-tested version. See comment above.
+        'numpy==1.26.4' \
     && pip install --no-cache-dir --no-build-isolation \
         'git+https://github.com/facebookresearch/detectron2.git@v0.6'
-
-# 2b. Patch the upstream code for numpy 2.x / torch 2.1 compat.
-#
-#     `deformable_transformer_v2.py:124`:
-#          self.pos_embed.data.copy_(torch.from_numpy(pos_embed).float().unsqueeze(0))
-#     raises `TypeError: expected np.ndarray (got numpy.ndarray)` on
-#     numpy 2.x + torch 2.1 because `get_1d_sincos_pos_embed_from_grid`
-#     returns a `float64` array, and newer torch versions reject
-#     float64 arrays in `torch.from_numpy` (the `.float()` cast after
-#     the fact is too late — the conversion itself fails first).
-#     The minimal fix is to cast the array to float32 *before* passing
-#     to `torch.from_numpy`, and drop the now-redundant `.float()`.
-#
-#     The line is guaranteed to exist in master as of 2026-06-09 —
-#     anchor sed on the full statement, not the variable, so the sed
-#     never silently no-ops.  An earlier patch tried
-#     `np.ascontiguousarray(torch.from_numpy(pos_embed))` — that does
-#     not help, because the dtype mismatch is what `from_numpy`
-#     rejects, not the memory layout.  Replaced with the
-#     dtype-cast approach after observing the contiguity fix
-#     produce the same TypeError at runtime.
-WORKDIR /opt/build/Raster2Seq
-RUN sed -i 's|torch.from_numpy(pos_embed).float().unsqueeze(0)|torch.from_numpy(pos_embed.astype(np.float32)).unsqueeze(0)|' models/deformable_transformer_v2.py \
-    && grep -n "torch.from_numpy(pos_embed)" models/deformable_transformer_v2.py
 
 # 3. Build MSDeformAttn (deformable-DETR's C++/CUDA op). Required at
 #    inference time (no `if self.training` gate in deformable_transformer.py).
