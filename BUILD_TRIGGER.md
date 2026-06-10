@@ -60,3 +60,6 @@ image builds.
 | `ca2e870`  | `…-main-dockerfile:ca2e870f`       | `TypeError: got multiple values for 'semantic_classes'` in `Namespace(**)` splat |
 | `4154e64`  | `…-main-dockerfile:4154e64a`       | new `pos_embed` patch for numpy 2.x |
 | `0826b26`  | `…-main-dockerfile:0826b26a0`      | BUILD_TRIGGER.md reverted to match actual workflow |
+| `00d1ab2`  | `…-main-dockerfile:00d1ab2e2`      | numpy 2.x pos_embed `TypeError: expected np.ndarray` |
+| `e627eb7`  | `…-main-dockerfile:e627eb712`      | `class_embed` size mismatch: ckpt has 3, model had 4 (add_cls_token) |
+| `<new>`    | `…-main-dockerfile:<9-hex SHA>`    | set `add_cls_token=False` to match cc5k checkpoint |

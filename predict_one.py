@@ -112,7 +112,11 @@ CC5K_PREDICT_FLAGS = dict(
     dec_qkv_proj=False,
     dec_attn_concat_src=True,
     per_token_sem_loss=True,
-    add_cls_token=True,
+    # add_cls_token=False to match the upstream predict_cc5k.sh invocation
+    # — the cubicasa5k checkpoint was trained without the <cls> token, so
+    # `class_embed` outputs 3 classes (<coord>/<sep>/<eos>). Setting this to
+    # True creates a 4-class head that the checkpoint cannot load.
+    add_cls_token=False,
     # backbone
     backbone="resnet50",
     lr_backbone=0,
