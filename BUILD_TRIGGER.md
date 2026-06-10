@@ -1,30 +1,60 @@
 # Build triggers
 
-Each new commit to `main` produces a new image tag in the form
-`smitp-vibe3d-r2s-worker-main-dockerfile:<first 9 hex chars of SHA>`.
-The RunPod Serverless endpoint `n3j6lepsb4ym6e` is configured to pull
-from this image stream.
+RunPod's Serverless GitHub integration only builds on **GitHub
+Releases**, not on commits. To push a new code change to a running
+endpoint you must:
+
+1. Push the commit to `main`.
+2. **Create a GitHub release** on the latest commit:
+   ```bash
+   git tag v0.0.N-short-desc
+   git push origin v0.0.N-short-desc
+   gh release create v0.0.N-short-desc \
+     --repo smitp/vibe3d-r2s-worker \
+     --title "v0.0.N — short desc" \
+     --notes "..." \
+     --target <full SHA>
+   ```
+3. The release triggers a build in the bound RunPod GitHub
+   integration. Build takes ~5–10 min for a fresh image.
+4. RunPod pushes the resulting image to
+   `registry.runpod.net/smitp-vibe3d-r2s-worker-main-dockerfile:<first 9 hex chars of SHA>`.
+5. Re-bind the template to the new image:
+   ```bash
+   SHA=$(git log --format=%H -1 | head -c 9)
+   IMAGE="registry.runpod.net/smitp-vibe3d-r2s-worker-main-dockerfile:${SHA}"
+   curl -X POST "https://api.runpod.io/graphql" \
+     -H "Authorization: Bearer $RUNPOD_API_KEY" \
+     -H "Content-Type: application/json" \
+     -d "$(cat <<EOF
+   { "query": "mutation { saveTemplate(input: { id: \"88j9olsbiw\", imageName: \"${IMAGE}\", containerDiskInGb: 20, dockerArgs: \"\", env: [], name: \"vibe3d-r2s-worker\", volumeInGb: 0 }) { id imageName } }" }
+   EOF
+   )"
+   ```
+6. Restart the worker pool (set `workersMax: 0`, sleep 10s, set
+   `workersMax: 1`) so a fresh worker pulls the new image.
 
 **Why this file exists**
 
-RunPod's GitHub integration does not always auto-pick up new commits
-on a bound template. The `saveTemplate` GraphQL mutation (see the
-project's `ARCHITECTURE_v4.md` §3) can re-bind the template to a
-new image tag, but the **build itself** is also keyed on the commit
-SHA — so a fresh commit is the trigger, not a comment-only change.
+A new release is the only event that triggers a build on a bound
+endpoint. Re-binding the template to a SHA without a release gives
+no new image — the worker pulls nothing useful and goes unhealthy.
+The RunPod endpoint version counter still increments on every
+`saveTemplate` call, which is misleading: it tracks the template
+rebinding, not the image build.
 
-If a new commit doesn't immediately result in a healthy worker:
+**The two-step gotcha**
 
-1. The `saveTemplate` mutation may need to be re-run (see
-   `docs/runpod-rebuild.md` for the exact curl).
-2. The RunPod console's **Logs** tab for the endpoint will show the
-   actual build / runtime error — the API does not expose worker logs.
-3. As a last resort, switch to a Pod with `serve.py` (see
-   `README.md` §"Deploy to a RunPod Pod").
+The release build can take 5–10 min. If you re-bind the template
+to a SHA whose image is still being built, the worker will pull
+nothing, fail to start, and be marked `unhealthy` after ~60s.
+Wait for the build to land in the registry before re-binding.
 
 **Last-known-good image**
 
-| Commit  | Image tag                          | Status        |
-|---------|------------------------------------|---------------|
-| `9eb3899` | `…-main-dockerfile:9eb38998f`    | ran, missing descartes |
-| `790ea25` | `…-main-dockerfile:790ea256`     | build stuck, unhealthy  |
+| Commit     | Image tag                          | Status        |
+|------------|------------------------------------|---------------|
+| `9eb3899`  | `…-main-dockerfile:9eb38998f`      | ran, missing descartes |
+| `790ea25`  | `…-main-dockerfile:790ea256`       | build stuck, unhealthy  |
+| `ca2e870`  | `…-main-dockerfile:ca2e870f`       | `TypeError: got multiple values for 'semantic_classes'` in `Namespace(**)` splat |
+| `4154e64`  | `…-main-dockerfile:4154e64a`       | new `pos_embed` patch for numpy 2.x — **release `v0.0.4-numpy2-pos-embed-fix` created on 2026-06-10 to trigger build** |
