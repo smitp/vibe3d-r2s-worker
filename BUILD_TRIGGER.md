@@ -62,4 +62,5 @@ image builds.
 | `0826b26`  | `…-main-dockerfile:0826b26a0`      | BUILD_TRIGGER.md reverted to match actual workflow |
 | `00d1ab2`  | `…-main-dockerfile:00d1ab2e2`      | numpy 2.x pos_embed `TypeError: expected np.ndarray` |
 | `e627eb7`  | `…-main-dockerfile:e627eb712`      | `class_embed` size mismatch: ckpt has 3, model had 4 (add_cls_token) |
-| `<new>`    | `…-main-dockerfile:<9-hex SHA>`    | set `add_cls_token=False` to match cc5k checkpoint |
+| `69628c8`  | `…-main-dockerfile:69628c8df`      | set `add_cls_token=False` to match cc5k checkpoint |
+| `8289c32`  | `…-main-dockerfile:8289c3263`      | **first successful inference** — 3 polygons for two_bedroom, delayTime 12s, executionTime 18s |
